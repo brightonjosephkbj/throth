@@ -1,7 +1,7 @@
 mod engine;
 mod providers;
 
-use engine::downloader::inspect_hls_manifest;
+use engine::downloader::{download_hls_media, inspect_hls_manifest, save_audio_file};
 use engine::resolver::MediaResolver;
 use engine::search::SearchEngine;
 
@@ -20,6 +20,7 @@ fn print_usage() {
     println!("  throth details <movie_url>         - Extract detailed metadata via CDP");
     println!("  throth extract <movie_url>         - Extract direct stream URL from Goojara/Wootly");
     println!("  throth inspect <url>               - Inspect HLS manifest or media segments");
+    println!("  throth download <m3u8_url> [title] - Download HLS audio to ./downloads");
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -242,6 +243,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(manifest) => {
                     println!("Valid HLS manifest: Yes");
                     println!("Segments count: {}", manifest.segment_urls.len());
+                    println!("Total duration: {:.1} seconds", manifest.total_duration_seconds);
                 }
                 Err(e) => {
                     println!("Inspection error: {}", e);
