@@ -250,6 +250,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        "download" => {
+            let url = args.get(2).ok_or("Missing M3U8 URL argument for download")?;
+            let title = args.get(3).cloned().unwrap_or_else(|| "audio".to_string());
+            println!("Downloading HLS media from: {}", url);
+            match inspect_hls_manifest(url) {
+                Ok(manifest) => {
+                    println!("Manifest valid. Downloading {} segments...", manifest.segment_count);
+                    match download_hls_media(&manifest) {
+                        Ok(download) => {
+                            match save_audio_file(&download.data, "./downloads", &title) {
+                                Ok(saved_path) => {
+                                    println!("Successfully downloaded and saved to: {}", saved_path.display());
+                                }
+                                Err(e) => {
+                                    println!("Save error: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("Download error: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("Manifest inspection error: {}", e);
+                }
+            }
+        }
         _ => {
             print_usage();
         }
