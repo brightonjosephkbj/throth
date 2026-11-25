@@ -2,6 +2,7 @@ mod engine;
 mod providers;
 
 use engine::downloader::inspect_hls_manifest;
+use engine::resolver::MediaResolver;
 use engine::search::SearchEngine;
 
 use providers::soundcloud::SoundCloudProvider;
@@ -13,6 +14,7 @@ use providers::movie::fetch_movie_details_via_cdp;
 fn print_usage() {
     println!("Throth CLI Usage:");
     println!("  throth search <query>              - Search across all providers");
+    println!("  throth music <query>               - Search and extract music stream from SoundCloud");
     println!("  throth movie [--json] <query> ...  - Search movies using Goojara");
     println!("  throth popular [--json]            - List popular movies from Goojara");
     println!("  throth details <movie_url>         - Extract detailed metadata via CDP");
@@ -31,6 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut ome = SearchEngine::new();
     let soundcloud = SoundCloudProvider::new()?;
+    let soundcloud_for_music = SoundCloudProvider::new()?;
     let youtube = YouTubeProvider::new()?;
     let goojara = GoojaraProvider::new()?;
     let goojara_for_movie = GoojaraProvider::new()?;
@@ -57,6 +60,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Source: {}", result.provider);
                 println!("Type: {:?}", result.media_type);
                 println!("URL: {}", result.url);
+            }
+        }
+        "music" => {
+            let query = args.get(2).ok_or("Missing query argument for music extraction")?;
+            println!("\nSOUNDCLOUD MUSIC EXTRACTION");
+            println!("Query: {}", query);
+            println!("==============================");
+
+            let results = soundcloud_for_music.search(query)?;
+            if results.is_empty() {
+                println!("No tracks found for query: {}", query);
+            } else {
+                let first_result = &results[0];
+                println!("Found track: {} by {:?}", first_result.title, first_result.creator);
+                println!("Page URL: {}", first_result.url);
+
+                match soundcloud_for_music.resolve(first_result) {
+                    Ok(resolved) => {
+                        println!("\nResolved Media:");
+                        println!("Availability: {:?}", resolved.availability);
+                        if let Some(msg) = &resolved.message {
+                            println!("Message: {}", msg);
+                        }
+                        println!("Formats count: {}", resolved.formats.len());
+                        for fmt in &resolved.formats {
+                            println!("Format ID: {}, Container: {:?}, Mime: {:?}", fmt.format_id, fmt.container, fmt.mime_type);
+                            if let Some(url) = &fmt.direct_url {
+                                println!("  Direct URL: {}", url);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("Resolution error: {}", e);
+                    }
+                }
             }
         }
         "movie" => {
