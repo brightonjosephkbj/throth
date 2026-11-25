@@ -1,3 +1,4 @@
+pub mod movie;
 pub mod goojara;
 pub mod provider;
 pub mod soundcloud;

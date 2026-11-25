@@ -8,12 +8,14 @@ use providers::soundcloud::SoundCloudProvider;
 use providers::youtube::YouTubeProvider;
 use providers::goojara::GoojaraProvider;
 use providers::SearchProvider;
+use providers::movie::fetch_movie_details_via_cdp;
 
 fn print_usage() {
     println!("Throth CLI Usage:");
     println!("  throth search <query>              - Search across all providers");
-    println!("  throth movie <query>               - Search movies using Goojara");
-    println!("  throth popular                     - List popular movies from Goojara");
+    println!("  throth movie [--json] <query> ...  - Search movies using Goojara");
+    println!("  throth popular [--json]            - List popular movies from Goojara");
+    println!("  throth details <movie_url>         - Extract detailed metadata via CDP");
     println!("  throth extract <movie_url>         - Extract direct stream URL from Goojara/Wootly");
     println!("  throth inspect <url>               - Inspect HLS manifest or media segments");
 }
@@ -58,32 +60,114 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         "movie" => {
-            let query = args.get(2).ok_or("Missing query argument for movie search")?;
-            println!("\nGOOJARA MOVIE SEARCH");
-            println!("Query: {}", query);
-            println!("==============================");
+            let mut json_mode = false;
+            let mut query_parts = Vec::new();
 
-            let results = goojara_for_movie.search(query)?;
-            for result in &results {
-                println!("\nTitle: {}", result.title);
-                println!("URL: {}", result.url);
-                if let Some(poster) = &result.artwork_url {
-                    println!("Poster: {}", poster);
+            for arg in args.iter().skip(2) {
+                if arg == "--json" {
+                    json_mode = true;
+                } else {
+                    query_parts.push(arg.as_str());
+                }
+            }
+
+            if query_parts.is_empty() {
+                return Err("Missing query argument for movie search".into());
+            }
+            let query = query_parts.join(" ");
+
+            if !json_mode {
+                println!("\nGOOJARA MOVIE SEARCH");
+                println!("Query: {}", query);
+                println!("==============================");
+            }
+
+            let results = goojara_for_movie.search(&query)?;
+            let runtime = tokio::runtime::Runtime::new()?;
+            let mut details_list = Vec::new();
+
+            for result in results {
+                match runtime.block_on(fetch_movie_details_via_cdp(&result.url)) {
+                    Ok(details) => {
+                        details_list.push(details);
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: failed to fetch details for '{}' ({}): {}", result.title, result.url, e);
+                        details_list.push(providers::movie::MovieDetails {
+                            movie_name: result.title,
+                            poster: result.artwork_url,
+                            duration: None,
+                            link: result.url,
+                            cast: Vec::new(),
+                        });
+                    }
+                }
+            }
+
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&details_list)?);
+            } else {
+                for details in &details_list {
+                    println!("\nTitle: {}", details.movie_name);
+                    println!("URL: {}", details.link);
+                    if let Some(poster) = &details.poster {
+                        println!("Poster: {}", poster);
+                    }
+                    if let Some(duration) = &details.duration {
+                        println!("Duration: {}", duration);
+                    }
+                    if !details.cast.is_empty() {
+                        println!("Cast: {}", details.cast.join(", "));
+                    }
                 }
             }
         }
         "popular" => {
-            println!("\nGOOJARA POPULAR MOVIES");
-            println!("==============================");
-
+            let json_mode = args.iter().skip(2).any(|arg| arg == "--json");
             let results = goojara_for_popular.popular()?;
-            println!("Total popular results: {}", results.len());
 
-            for result in &results {
-                println!("\nTitle: {}", result.title);
-                println!("URL: {}", result.url);
-                if let Some(poster) = &result.artwork_url {
-                    println!("Poster: {}", poster);
+            if !json_mode {
+                println!("\nGOOJARA POPULAR MOVIES");
+                println!("==============================");
+                println!("Total popular results: {}", results.len());
+            }
+
+            let runtime = tokio::runtime::Runtime::new()?;
+            let mut details_list = Vec::new();
+
+            for result in results {
+                match runtime.block_on(fetch_movie_details_via_cdp(&result.url)) {
+                    Ok(details) => {
+                        details_list.push(details);
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: failed to fetch details for '{}' ({}): {}", result.title, result.url, e);
+                        details_list.push(providers::movie::MovieDetails {
+                            movie_name: result.title,
+                            poster: result.artwork_url,
+                            duration: None,
+                            link: result.url,
+                            cast: Vec::new(),
+                        });
+                    }
+                }
+            }
+
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&details_list)?);
+            } else {
+                for details in &details_list {
+                    println!("\nTitle: {}", details.movie_name);
+                    println!("URL: {}", details.link);
+                    if let Some(poster) = &details.poster {
+                        println!("Poster: {}", poster);
+                    }
+                    if let Some(duration) = &details.duration {
+                        println!("Duration: {}", duration);
+                    }
+                    if !details.cast.is_empty() {
+                        println!("Cast: {}", details.cast.join(", "));
+                    }
                 }
             }
         }
@@ -97,6 +181,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Err(e) => {
                     println!("Extraction error: {}", e);
+                }
+            }
+        }
+        "details" => {
+            let url = args.get(2).ok_or("Missing movie URL argument for details")?;
+            let runtime = tokio::runtime::Runtime::new()?;
+
+            match runtime.block_on(fetch_movie_details_via_cdp(url)) {
+                Ok(details) => {
+                    println!("{}", serde_json::to_string_pretty(&details)?);
+                }
+                Err(error) => {
+                    eprintln!("Details error: {}", error);
                 }
             }
         }

@@ -82,45 +82,45 @@ async fn fetch_popular_goojara_via_cdp() -> Result<Vec<SearchResult>, String> {
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
     let expression = r##"
-        (async () => {{
+        (async () => {
             const deadline = Date.now() + 12000;
 
-            while (Date.now() < deadline) {{
-                const items = [...document.querySelectorAll(".lfeed li a[href], .mfeed li a[href], .grid li a[href], ul.lfeed li a[href]")].filter(a => a.querySelector(".im") || a.querySelector("img") || a.querySelector("b") || a.textContent.trim().length > 0);
+            while (Date.now() < deadline) {
+                const results = [...document.querySelectorAll(".mfeed a[href]")]
+                    .filter(a => {
+                        const movie = a.querySelector(".im");
+                        return movie && !a.querySelector(".it");
+                    })
+                    .map(a => {
+                        const movie = a.querySelector(".im");
+                        const img = a.querySelector("img");
+                        const title = (movie.innerText || movie.textContent || "")
+                            .trim()
+                            .replace(/\s+/g, " ")
+                            .replace(/\s+(DVD|HDTV|HDR)$/i, "");
 
-                const results = items.map(a => {{
-                    let posterUrl = null;
-                    const img = a.querySelector("img") || a.closest("li")?.querySelector("img");
-                    if (img) {{
-                        posterUrl = img.getAttribute("src") || img.getAttribute("data-src") || img.getAttribute("data-lazy-src") || img.getAttribute("srcset");
-                    }}
-                    return {{
-                        title: (a.innerText || a.textContent || "")
-                            .trim().replace(/\\s+/g, " "),
-                        url: a.href,
-                        poster_url: posterUrl
-                    }};
-                }}).filter(item => item.title && item.url && item.url.includes("goojara.to"));
+                        return {
+                            title,
+                            url: a.href,
+                            poster_url: img
+                                ? (img.getAttribute("src") ||
+                                   img.getAttribute("data-src") ||
+                                   img.getAttribute("data-lazy-src"))
+                                : null
+                        };
+                    })
+                    .filter(item =>
+                        item.title &&
+                        item.url &&
+                        item.url.includes("goojara.to")
+                    );
 
                 if (results.length) return results;
-
-                // Fallback: collect all anchors with images or text
-                const allA = [...document.querySelectorAll("a[href]")].map(a => {{
-                    const img = a.querySelector("img");
-                    return {{
-                        title: (a.innerText || a.textContent || "").trim().replace(/\\s+/g, " "),
-                        url: a.href,
-                        poster_url: img ? (img.getAttribute("src") || img.getAttribute("data-src") || img.getAttribute("data-lazy-src")) : null
-                    }};
-                }}).filter(item => item.title.length > 2 && item.url.includes("goojara.to") && (item.poster_url || item.title.includes("(")));
-
-                if (allA.length) return allA;
-
-                await new Promise(resolve => setTimeout(resolve, 150));
-            }}
+                await new Promise(resolve => setTimeout(resolve, 250));
+            }
 
             return [];
-        }})()
+        })()
     "##;
 
     let fetch_eval = json!({
