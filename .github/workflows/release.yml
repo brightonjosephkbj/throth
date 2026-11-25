@@ -1,0 +1,26 @@
+name: Build Throth v1.0 Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build Release Binary
+        run: cargo build --release --bin throth
+      - name: Create Release Archive
+        run: |
+          mkdir -p dist
+          cp target/release/throth dist/throth
+          tar -czvf throth-v1.0-linux-x86_64.tar.gz -C dist throth
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: throth-binary
+          path: throth-v1.0-linux-x86_64.tar.gz
