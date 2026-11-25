@@ -1,4 +1,4 @@
-name: Build Throth Releases
+name: Build Throth v1.0 Release
 
 on:
   push:
@@ -16,45 +16,37 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,x86_64-unknown-linux-gnu
-
-      - name: Build Linux x86_64
-        run: cargo build --release --bin throth --target x86_64-unknown-linux-gnu
-
-      - name: Package Linux
-        run: |
-          mkdir -p dist/linux
-          cp target/x86_64-unknown-linux-gnu/release/throth dist/linux/
-          cp README.md dist/linux/
-          tar -czf throth-v1.0-linux-x86_64.tar.gz -C dist/linux .
+          targets: aarch64-linux-android
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Install Android NDK
-        run: sdkmanager --install "ndk;27.2.12479018"
-
-      - name: Configure Android linker
         run: |
-          NDK="$ANDROID_HOME/ndk/27.2.12479018"
-          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          sdkmanager "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
-          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
-          echo "CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
-          echo "AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar" >> "$GITHUB_ENV"
+      - name: Configure Android ARM64 linker
+        run: |
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
+
+      - name: Build Linux x86_64
+        run: cargo build --release --bin throth
 
       - name: Build Android ARM64
-        run: cargo build --release --bin throth --target aarch64-linux-android
+        run: cargo build --release --target aarch64-linux-android --bin throth
 
-      - name: Package Android
+      - name: Package Linux binary
+        run: |
+          mkdir -p dist/linux
+          cp target/release/throth dist/linux/
+          tar -czf throth-v1.0-linux-x86_64.tar.gz -C dist/linux throth
+
+      - name: Package Android ARM64 binary
         run: |
           mkdir -p dist/android
           cp target/aarch64-linux-android/release/throth dist/android/
-          cp README.md dist/android/
-          tar -czf throth-v0.1-android-arm64.tar.gz -C dist/android .
-
-      - name: Verify Android binary
-        run: file dist/android/throth
+          tar -czf throth-v1.0-android-arm64.tar.gz -C dist/android throth
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
@@ -62,8 +54,8 @@ jobs:
           name: throth-linux-x86_64
           path: throth-v1.0-linux-x86_64.tar.gz
 
-      - name: Upload Android artifact
+      - name: Upload Android ARM64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: throth-android-arm64
-          path: throth-v0.1-android-arm64.tar.gz
+          path: throth-v1.0-android-arm64.tar.gz
