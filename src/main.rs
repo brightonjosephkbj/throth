@@ -21,6 +21,7 @@ fn print_usage() {
     println!("  throth extract <movie_url>         - Extract direct stream URL from Goojara/Wootly");
     println!("  throth inspect <url>               - Inspect HLS manifest or media segments");
     println!("  throth download <m3u8_url> [title] - Download HLS audio to ./downloads");
+    println!("  throth sound <query>               - Search SoundCloud, select a track, and download it");
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -276,6 +277,72 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => {
                     println!("Manifest inspection error: {}", e);
                 }
+            }
+        }
+        "sound" => {
+            let query = args.get(2).ok_or("Missing query argument for sound command")?;
+            println!("\nSOUNDCLOUD INTERACTIVE SEARCH & DOWNLOAD");
+            println!("Query: {}", query);
+            println!("==============================");
+
+            let results = soundcloud_for_music.search(query)?;
+            if results.is_empty() {
+                println!("No tracks found for query: {}", query);
+            } else {
+                for (i, result) in results.iter().enumerate() {
+                    println!("[{}] {} by {:?}", i + 1, result.title, result.creator);
+                    println!("    URL: {}", result.url);
+                }
+
+                print!("\nSelect track number (1-{}): ", results.len());
+                std::io::Write::flush(&mut std::io::stdout())?;
+
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+                let choice: usize = input.trim().parse().map_err(|_| "Invalid selection number")?;
+
+                if choice == 0 || choice > results.len() {
+                    return Err("Selection out of range".into());
+                }
+
+                let selected_result = &results[choice - 1];
+                println!("\nResolving track: {}...", selected_result.title);
+
+                let resolved = soundcloud_for_music.resolve(selected_result)?;
+                if resolved.formats.is_empty() {
+                    return Err("No downloadable formats available for this track".into());
+                }
+
+                println!("\nAvailable Formats:");
+                for (j, fmt) in resolved.formats.iter().enumerate() {
+                    println!("[{}] Format ID: {}, Container: {:?}, Mime: {:?}", j + 1, fmt.format_id, fmt.container, fmt.mime_type);
+                    if let Some(url) = &fmt.direct_url {
+                        println!("    Direct URL: {}", url);
+                    }
+                }
+
+                print!("\nSelect format number (1-{}): ", resolved.formats.len());
+                std::io::Write::flush(&mut std::io::stdout())?;
+
+                let mut fmt_input = String::new();
+                std::io::stdin().read_line(&mut fmt_input)?;
+                let fmt_choice: usize = fmt_input.trim().parse().map_err(|_| "Invalid format selection number")?;
+
+                if fmt_choice == 0 || fmt_choice > resolved.formats.len() {
+                    return Err("Format selection out of range".into());
+                }
+
+                let selected_format = &resolved.formats[fmt_choice - 1];
+                let direct_url = selected_format.direct_url.as_ref().ok_or("Selected format has no direct URL")?;
+
+                println!("\nInspecting HLS manifest for format {}...", selected_format.format_id);
+                let manifest = inspect_hls_manifest(direct_url)?;
+                println!("Manifest valid. Downloading {} segments...", manifest.segment_count);
+
+                let download = download_hls_media(&manifest)?;
+                let saved_path = save_audio_file(&download.data, "./downloads", &selected_result.title)?;
+
+                println!("Successfully downloaded and saved to: {}", saved_path.display());
             }
         }
         _ => {
