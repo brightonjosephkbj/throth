@@ -1,0 +1,38 @@
+name: Test Throth Linux Search
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download Linux release
+        run: |
+          curl -fL \
+            https://github.com/brightonjosephkbj/throth/releases/download/v1.0/throth-v1.0-linux-x86_64.tar.gz \
+            -o throth.tar.gz
+
+          mkdir extracted
+          tar -xzf throth.tar.gz -C extracted
+          chmod +x extracted/throth
+
+      - name: Check runner architecture
+        run: |
+          uname -a
+          file extracted/throth
+
+      - name: Test homepage with curl
+        run: |
+          curl -sSL \
+            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+            https://ww1.goojara.to/ \
+            -o homepage.html
+
+          grep -o 'id="res"[^>]*' homepage.html || true
+          wc -c homepage.html
+
+      - name: Test Throth movie search
+        run: |
+          ./extracted/throth movie --json "Avatar"
