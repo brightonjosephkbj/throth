@@ -10,29 +10,24 @@ jobs:
     steps:
       - name: Download Linux release
         run: |
-          curl -fL \
-            https://github.com/brightonjosephkbj/throth/releases/download/v1.0/throth-v1.0-linux-x86_64.tar.gz \
-            -o throth.tar.gz
-
+          curl -fL https://github.com/brightonjosephkbj/throth/releases/download/v1.0/throth-v1.0-linux-x86_64.tar.gz -o throth.tar.gz
           mkdir extracted
           tar -xzf throth.tar.gz -C extracted
           chmod +x extracted/throth
 
-      - name: Check runner architecture
+      - name: Compare Goojara responses
         run: |
-          uname -a
-          file extracted/throth
+          for ua in \
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36"
+          do
+            echo "===== USER AGENT: $ua ====="
+            curl -sSL -A "$ua" -D headers.txt https://ww1.goojara.to/ -o homepage.html
+            head -n 1 headers.txt
+            wc -c homepage.html
+            grep -o 'id="res"[^>]*' homepage.html || echo "#res NOT FOUND"
+          done
 
-      - name: Test homepage with curl
-        run: |
-          curl -sSL \
-            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
-            https://ww1.goojara.to/ \
-            -o homepage.html
-
-          grep -o 'id="res"[^>]*' homepage.html || true
-          wc -c homepage.html
-
-      - name: Test Throth movie search
+      - name: Test Throth
         run: |
           ./extracted/throth movie --json "Avatar"
