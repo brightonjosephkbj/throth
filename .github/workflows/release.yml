@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -65,3 +68,14 @@ jobs:
         with:
           name: throth-android-arm64
           path: throth-v1.0-android-arm64.tar.gz
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0
+          name: Throth v1.0
+          make_latest: true
+          overwrite_files: true
+          files: |
+            throth-v1.0-linux-x86_64.tar.gz
+            throth-v1.0-android-arm64.tar.gz
