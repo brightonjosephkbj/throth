@@ -3,6 +3,9 @@ name = "throth"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 urlencoding = "2.1"
 regex = "1.13.2"

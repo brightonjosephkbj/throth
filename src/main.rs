@@ -5,23 +5,29 @@ use engine::downloader::{download_hls_media, inspect_hls_manifest, save_audio_fi
 use engine::resolver::MediaResolver;
 use engine::search::SearchEngine;
 
+use providers::SearchProvider;
+use providers::goojara::GoojaraProvider;
+use providers::movie::fetch_movie_details_via_cdp;
 use providers::soundcloud::SoundCloudProvider;
 use providers::youtube::YouTubeProvider;
-use providers::goojara::GoojaraProvider;
-use providers::SearchProvider;
-use providers::movie::fetch_movie_details_via_cdp;
 
 fn print_usage() {
     println!("Throth CLI Usage:");
     println!("  throth search <query>              - Search across all providers");
-    println!("  throth music <query>               - Search and extract music stream from SoundCloud");
+    println!(
+        "  throth music <query>               - Search and extract music stream from SoundCloud"
+    );
     println!("  throth movie [--json] <query> ...  - Search movies using Goojara");
     println!("  throth popular [--json]            - List popular movies from Goojara");
     println!("  throth details <movie_url>         - Extract detailed metadata via CDP");
-    println!("  throth extract <movie_url>         - Extract direct stream URL from Goojara/Wootly");
+    println!(
+        "  throth extract <movie_url>         - Extract direct stream URL from Goojara/Wootly"
+    );
     println!("  throth inspect <url>               - Inspect HLS manifest or media segments");
     println!("  throth download <m3u8_url> [title] - Download HLS audio to ./downloads");
-    println!("  throth sound <query>               - Search SoundCloud, select a track, and download it");
+    println!(
+        "  throth sound <query>               - Search SoundCloud, select a track, and download it"
+    );
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -48,7 +54,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match command.as_str() {
         "search" => {
-            let query = args.get(2).cloned().unwrap_or_else(|| "STRUCT slowed".to_string());
+            let query = args
+                .get(2)
+                .cloned()
+                .unwrap_or_else(|| "STRUCT slowed".to_string());
             println!("\nOME SMART SEARCH");
             println!("Query: {}", query);
             println!("==============================");
@@ -65,7 +74,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         "music" => {
-            let query = args.get(2).ok_or("Missing query argument for music extraction")?;
+            let query = args
+                .get(2)
+                .ok_or("Missing query argument for music extraction")?;
             println!("\nSOUNDCLOUD MUSIC EXTRACTION");
             println!("Query: {}", query);
             println!("==============================");
@@ -75,7 +86,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("No tracks found for query: {}", query);
             } else {
                 let first_result = &results[0];
-                println!("Found track: {} by {:?}", first_result.title, first_result.creator);
+                println!(
+                    "Found track: {} by {:?}",
+                    first_result.title, first_result.creator
+                );
                 println!("Page URL: {}", first_result.url);
 
                 match soundcloud_for_music.resolve(first_result) {
@@ -87,7 +101,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         println!("Formats count: {}", resolved.formats.len());
                         for fmt in &resolved.formats {
-                            println!("Format ID: {}, Container: {:?}, Mime: {:?}", fmt.format_id, fmt.container, fmt.mime_type);
+                            println!(
+                                "Format ID: {}, Container: {:?}, Mime: {:?}",
+                                fmt.format_id, fmt.container, fmt.mime_type
+                            );
                             if let Some(url) = &fmt.direct_url {
                                 println!("  Direct URL: {}", url);
                             }
@@ -132,7 +149,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         details_list.push(details);
                     }
                     Err(e) => {
-                        eprintln!("Warning: failed to fetch details for '{}' ({}): {}", result.title, result.url, e);
+                        eprintln!(
+                            "Warning: failed to fetch details for '{}' ({}): {}",
+                            result.title, result.url, e
+                        );
                         details_list.push(providers::movie::MovieDetails {
                             movie_name: result.title,
                             poster: result.artwork_url,
@@ -181,7 +201,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         details_list.push(details);
                     }
                     Err(e) => {
-                        eprintln!("Warning: failed to fetch details for '{}' ({}): {}", result.title, result.url, e);
+                        eprintln!(
+                            "Warning: failed to fetch details for '{}' ({}): {}",
+                            result.title, result.url, e
+                        );
                         details_list.push(providers::movie::MovieDetails {
                             movie_name: result.title,
                             poster: result.artwork_url,
@@ -212,7 +235,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         "extract" => {
-            let url = args.get(2).ok_or("Missing movie URL argument for extract")?;
+            let url = args
+                .get(2)
+                .ok_or("Missing movie URL argument for extract")?;
             println!("\nEXTRACTING STREAM FROM: {}", url);
             println!("==============================");
             match goojara_for_extract.extract_stream(url) {
@@ -225,7 +250,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         "details" => {
-            let url = args.get(2).ok_or("Missing movie URL argument for details")?;
+            let url = args
+                .get(2)
+                .ok_or("Missing movie URL argument for details")?;
             let runtime = tokio::runtime::Runtime::new()?;
 
             match runtime.block_on(fetch_movie_details_via_cdp(url)) {
@@ -244,7 +271,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(manifest) => {
                     println!("Valid HLS manifest: Yes");
                     println!("Segments count: {}", manifest.segment_urls.len());
-                    println!("Total duration: {:.1} seconds", manifest.total_duration_seconds);
+                    println!(
+                        "Total duration: {:.1} seconds",
+                        manifest.total_duration_seconds
+                    );
                 }
                 Err(e) => {
                     println!("Inspection error: {}", e);
@@ -252,17 +282,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         "download" => {
-            let url = args.get(2).ok_or("Missing M3U8 URL argument for download")?;
+            let url = args
+                .get(2)
+                .ok_or("Missing M3U8 URL argument for download")?;
             let title = args.get(3).cloned().unwrap_or_else(|| "audio".to_string());
             println!("Downloading HLS media from: {}", url);
             match inspect_hls_manifest(url) {
                 Ok(manifest) => {
-                    println!("Manifest valid. Downloading {} segments...", manifest.segment_count);
+                    println!(
+                        "Manifest valid. Downloading {} segments...",
+                        manifest.segment_count
+                    );
                     match download_hls_media(&manifest) {
                         Ok(download) => {
                             match save_audio_file(&download.data, "./downloads", &title) {
                                 Ok(saved_path) => {
-                                    println!("Successfully downloaded and saved to: {}", saved_path.display());
+                                    println!(
+                                        "Successfully downloaded and saved to: {}",
+                                        saved_path.display()
+                                    );
                                 }
                                 Err(e) => {
                                     println!("Save error: {}", e);
@@ -280,7 +318,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         "sound" => {
-            let query = args.get(2).ok_or("Missing query argument for sound command")?;
+            let query = args
+                .get(2)
+                .ok_or("Missing query argument for sound command")?;
             println!("\nSOUNDCLOUD INTERACTIVE SEARCH & DOWNLOAD");
             println!("Query: {}", query);
             println!("==============================");
@@ -299,7 +339,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input)?;
-                let choice: usize = input.trim().parse().map_err(|_| "Invalid selection number")?;
+                let choice: usize = input
+                    .trim()
+                    .parse()
+                    .map_err(|_| "Invalid selection number")?;
 
                 if choice == 0 || choice > results.len() {
                     return Err("Selection out of range".into());
@@ -315,7 +358,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 println!("\nAvailable Formats:");
                 for (j, fmt) in resolved.formats.iter().enumerate() {
-                    println!("[{}] Format ID: {}, Container: {:?}, Mime: {:?}", j + 1, fmt.format_id, fmt.container, fmt.mime_type);
+                    println!(
+                        "[{}] Format ID: {}, Container: {:?}, Mime: {:?}",
+                        j + 1,
+                        fmt.format_id,
+                        fmt.container,
+                        fmt.mime_type
+                    );
                     if let Some(url) = &fmt.direct_url {
                         println!("    Direct URL: {}", url);
                     }
@@ -326,23 +375,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let mut fmt_input = String::new();
                 std::io::stdin().read_line(&mut fmt_input)?;
-                let fmt_choice: usize = fmt_input.trim().parse().map_err(|_| "Invalid format selection number")?;
+                let fmt_choice: usize = fmt_input
+                    .trim()
+                    .parse()
+                    .map_err(|_| "Invalid format selection number")?;
 
                 if fmt_choice == 0 || fmt_choice > resolved.formats.len() {
                     return Err("Format selection out of range".into());
                 }
 
                 let selected_format = &resolved.formats[fmt_choice - 1];
-                let direct_url = selected_format.direct_url.as_ref().ok_or("Selected format has no direct URL")?;
+                let direct_url = selected_format
+                    .direct_url
+                    .as_ref()
+                    .ok_or("Selected format has no direct URL")?;
 
-                println!("\nInspecting HLS manifest for format {}...", selected_format.format_id);
+                println!(
+                    "\nInspecting HLS manifest for format {}...",
+                    selected_format.format_id
+                );
                 let manifest = inspect_hls_manifest(direct_url)?;
-                println!("Manifest valid. Downloading {} segments...", manifest.segment_count);
+                println!(
+                    "Manifest valid. Downloading {} segments...",
+                    manifest.segment_count
+                );
 
                 let download = download_hls_media(&manifest)?;
-                let saved_path = save_audio_file(&download.data, "./downloads", &selected_result.title)?;
+                let saved_path =
+                    save_audio_file(&download.data, "./downloads", &selected_result.title)?;
 
-                println!("Successfully downloaded and saved to: {}", saved_path.display());
+                println!(
+                    "Successfully downloaded and saved to: {}",
+                    saved_path.display()
+                );
             }
         }
         _ => {

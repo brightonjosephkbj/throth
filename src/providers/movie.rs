@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use futures_util::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use tokio_tungstenite::connect_async;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,9 +24,9 @@ pub async fn fetch_movie_details_via_cdp(url: &str) -> Result<MovieDetails, Stri
 
     let targets: Vec<Value> = response.json().await.map_err(|e| e.to_string())?;
 
-    let mut ws_url = targets.iter()
-        .find(|t| t["type"] == "page" &&
-            t["url"].as_str().unwrap_or("").contains("goojara.to"))
+    let mut ws_url = targets
+        .iter()
+        .find(|t| t["type"] == "page" && t["url"].as_str().unwrap_or("").contains("goojara.to"))
         .and_then(|t| t["webSocketDebuggerUrl"].as_str())
         .map(str::to_string);
 
@@ -56,14 +56,20 @@ pub async fn fetch_movie_details_via_cdp(url: &str) -> Result<MovieDetails, Stri
         ("Page.navigate", json!({"url": url})),
     ] {
         id += 1;
-        write.send(tokio_tungstenite::tungstenite::Message::Text(
-            json!({"id": id, "method": method, "params": params}).to_string().into()
-        )).await.map_err(|e| e.to_string())?;
+        write
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                json!({"id": id, "method": method, "params": params})
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
     // Wait until the requested movie page, not an old browser tab, is loaded.
     let target_url = serde_json::to_string(url).map_err(|e| e.to_string())?;
-    let readiness_expr = format!(r#"
+    let readiness_expr = format!(
+        r#"
         (async () => {{
             const targetUrl = {target_url};
             const targetPath = new URL(targetUrl).pathname;
@@ -86,32 +92,40 @@ pub async fn fetch_movie_details_via_cdp(url: &str) -> Result<MovieDetails, Stri
 
             return false;
         }})()
-    "#);
+    "#
+    );
 
     id += 1;
     let ready_cmd_id = id;
-    write.send(tokio_tungstenite::tungstenite::Message::Text(
-        json!({
-            "id": ready_cmd_id,
-            "method": "Runtime.evaluate",
-            "params": {
-                "expression": readiness_expr,
-                "returnByValue": true,
-                "awaitPromise": true
-            }
-        }).to_string().into()
-    )).await.map_err(|e| e.to_string())?;
+    write
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            json!({
+                "id": ready_cmd_id,
+                "method": "Runtime.evaluate",
+                "params": {
+                    "expression": readiness_expr,
+                    "returnByValue": true,
+                    "awaitPromise": true
+                }
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Quick wait for readiness response or brief fallback
     let _ = tokio::time::timeout(tokio::time::Duration::from_secs(13), async {
-        while let Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) = read.next().await {
+        while let Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) = read.next().await
+        {
             if let Ok(value) = serde_json::from_str::<Value>(&text) {
                 if value["id"].as_i64() == Some(ready_cmd_id as i64) {
                     break;
                 }
             }
         }
-    }).await;
+    })
+    .await;
 
     let expression = r#"
         (() => {
@@ -160,16 +174,21 @@ pub async fn fetch_movie_details_via_cdp(url: &str) -> Result<MovieDetails, Stri
     id += 1;
     let command_id = id;
 
-    write.send(tokio_tungstenite::tungstenite::Message::Text(
-        json!({
-            "id": command_id,
-            "method": "Runtime.evaluate",
-            "params": {
-                "expression": expression,
-                "returnByValue": true
-            }
-        }).to_string().into()
-    )).await.map_err(|e| e.to_string())?;
+    write
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            json!({
+                "id": command_id,
+                "method": "Runtime.evaluate",
+                "params": {
+                    "expression": expression,
+                    "returnByValue": true
+                }
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
 
     let timeout = tokio::time::sleep(tokio::time::Duration::from_secs(10));
     tokio::pin!(timeout);

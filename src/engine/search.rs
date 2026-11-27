@@ -6,7 +6,9 @@ pub struct SearchEngine {
 
 impl SearchEngine {
     pub fn new() -> Self {
-        Self { providers: Vec::new() }
+        Self {
+            providers: Vec::new(),
+        }
     }
 
     pub fn register_provider(&mut self, provider: Box<dyn SearchProvider>) {

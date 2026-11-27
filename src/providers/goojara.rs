@@ -1,7 +1,7 @@
 use super::provider::{MediaType, ProviderError, SearchProvider, SearchResult};
 use crate::engine::cdp::extract_wootly_via_cdp;
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio_tungstenite::connect_async;
 
 pub struct GoojaraProvider {}
@@ -13,12 +13,14 @@ impl GoojaraProvider {
 
     pub fn extract_stream(&self, movie_url: &str) -> Result<String, ProviderError> {
         let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
-        rt.block_on(extract_wootly_via_cdp(movie_url)).map_err(|e| e.to_string())
+        rt.block_on(extract_wootly_via_cdp(movie_url))
+            .map_err(|e| e.to_string())
     }
 
     pub fn popular(&self) -> Result<Vec<SearchResult>, ProviderError> {
         let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
-        rt.block_on(fetch_popular_goojara_via_cdp()).map_err(|e| e.to_string())
+        rt.block_on(fetch_popular_goojara_via_cdp())
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -26,12 +28,14 @@ async fn fetch_popular_goojara_via_cdp() -> Result<Vec<SearchResult>, String> {
     crate::engine::cdp::ensure_chromium_running().await?;
 
     let client = reqwest::Client::new();
-    let resp = client.get("http://127.0.0.1:9222/json/list")
+    let resp = client
+        .get("http://127.0.0.1:9222/json/list")
         .send()
         .await
         .map_err(|e| format!("Failed to list targets: {}", e))?;
-    
-    let targets: Vec<Value> = resp.json()
+
+    let targets: Vec<Value> = resp
+        .json()
         .await
         .map_err(|e| format!("Failed to parse targets: {}", e))?;
 
@@ -45,31 +49,54 @@ async fn fetch_popular_goojara_via_cdp() -> Result<Vec<SearchResult>, String> {
     }
 
     if ws_url.is_empty() {
-        let new_resp = client.put(&format!("http://127.0.0.1:9222/json/new?{}", urlencoding::encode("https://ww1.goojara.to/watch-trends-popular")))
+        let new_resp = client
+            .put(&format!(
+                "http://127.0.0.1:9222/json/new?{}",
+                urlencoding::encode("https://ww1.goojara.to/watch-trends-popular")
+            ))
             .send()
             .await
             .map_err(|e| format!("Failed to create tab: {}", e))?;
-        let body_text = new_resp.text().await
+        let body_text = new_resp
+            .text()
+            .await
             .map_err(|e| format!("Failed to read new target response body: {}", e))?;
         let new_target: Value = serde_json::from_str(&body_text)
             .map_err(|e| format!("Failed to parse new target JSON ('{}'): {}", body_text, e))?;
-        ws_url = new_target["webSocketDebuggerUrl"].as_str().ok_or("Missing ws url")?.to_string();
+        ws_url = new_target["webSocketDebuggerUrl"]
+            .as_str()
+            .ok_or("Missing ws url")?
+            .to_string();
     }
 
-    let (ws_stream, _) = connect_async(&ws_url).await
+    let (ws_stream, _) = connect_async(&ws_url)
+        .await
         .map_err(|e| format!("Failed to connect to CDP websocket: {}", e))?;
 
     let mut msg_id = 0;
 
-    async fn send_command(ws: &mut futures_util::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, tokio_tungstenite::tungstenite::Message>, id: &mut i32, method: &str, params: Value) -> Result<i32, String> {
+    async fn send_command(
+        ws: &mut futures_util::stream::SplitSink<
+            tokio_tungstenite::WebSocketStream<
+                tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+            >,
+            tokio_tungstenite::tungstenite::Message,
+        >,
+        id: &mut i32,
+        method: &str,
+        params: Value,
+    ) -> Result<i32, String> {
         *id += 1;
         let cmd = json!({
             "id": *id,
             "method": method,
             "params": params
         });
-        ws.send(tokio_tungstenite::tungstenite::Message::Text(cmd.to_string().into())).await
-            .map_err(|e| format!("WS send error: {}", e))?;
+        ws.send(tokio_tungstenite::tungstenite::Message::Text(
+            cmd.to_string().into(),
+        ))
+        .await
+        .map_err(|e| format!("WS send error: {}", e))?;
         Ok(*id)
     }
 
@@ -77,7 +104,13 @@ async fn fetch_popular_goojara_via_cdp() -> Result<Vec<SearchResult>, String> {
 
     send_command(&mut write, &mut msg_id, "Runtime.enable", json!({})).await?;
     send_command(&mut write, &mut msg_id, "Page.enable", json!({})).await?;
-    send_command(&mut write, &mut msg_id, "Page.navigate", json!({"url": "https://ww1.goojara.to/watch-trends-popular"})).await?;
+    send_command(
+        &mut write,
+        &mut msg_id,
+        "Page.navigate",
+        json!({"url": "https://ww1.goojara.to/watch-trends-popular"}),
+    )
+    .await?;
 
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
@@ -129,12 +162,7 @@ async fn fetch_popular_goojara_via_cdp() -> Result<Vec<SearchResult>, String> {
         "awaitPromise": true
     });
 
-    let command_id = send_command(
-        &mut write,
-        &mut msg_id,
-        "Runtime.evaluate",
-        fetch_eval
-    ).await?;
+    let command_id = send_command(&mut write, &mut msg_id, "Runtime.evaluate", fetch_eval).await?;
 
     let timeout = tokio::time::sleep(tokio::time::Duration::from_secs(12));
     tokio::pin!(timeout);
@@ -182,12 +210,14 @@ async fn search_goojara_via_cdp(query: &str) -> Result<Vec<SearchResult>, String
     crate::engine::cdp::ensure_chromium_running().await?;
 
     let client = reqwest::Client::new();
-    let resp = client.get("http://127.0.0.1:9222/json/list")
+    let resp = client
+        .get("http://127.0.0.1:9222/json/list")
         .send()
         .await
         .map_err(|e| format!("Failed to list targets: {}", e))?;
 
-    let targets: Vec<Value> = resp.json()
+    let targets: Vec<Value> = resp
+        .json()
         .await
         .map_err(|e| format!("Failed to parse targets: {}", e))?;
 
@@ -201,31 +231,54 @@ async fn search_goojara_via_cdp(query: &str) -> Result<Vec<SearchResult>, String
     }
 
     if ws_url.is_empty() {
-        let new_resp = client.put(&format!("http://127.0.0.1:9222/json/new?{}", urlencoding::encode("https://ww1.goojara.to/")))
+        let new_resp = client
+            .put(&format!(
+                "http://127.0.0.1:9222/json/new?{}",
+                urlencoding::encode("https://ww1.goojara.to/")
+            ))
             .send()
             .await
             .map_err(|e| format!("Failed to create tab: {}", e))?;
-        let body_text = new_resp.text().await
+        let body_text = new_resp
+            .text()
+            .await
             .map_err(|e| format!("Failed to read new target response body: {}", e))?;
         let new_target: Value = serde_json::from_str(&body_text)
             .map_err(|e| format!("Failed to parse new target JSON ('{}'): {}", body_text, e))?;
-        ws_url = new_target["webSocketDebuggerUrl"].as_str().ok_or("Missing ws url")?.to_string();
+        ws_url = new_target["webSocketDebuggerUrl"]
+            .as_str()
+            .ok_or("Missing ws url")?
+            .to_string();
     }
 
-    let (ws_stream, _) = connect_async(&ws_url).await
+    let (ws_stream, _) = connect_async(&ws_url)
+        .await
         .map_err(|e| format!("Failed to connect to CDP websocket: {}", e))?;
 
     let mut msg_id = 0;
 
-    async fn send_command(ws: &mut futures_util::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, tokio_tungstenite::tungstenite::Message>, id: &mut i32, method: &str, params: Value) -> Result<i32, String> {
+    async fn send_command(
+        ws: &mut futures_util::stream::SplitSink<
+            tokio_tungstenite::WebSocketStream<
+                tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+            >,
+            tokio_tungstenite::tungstenite::Message,
+        >,
+        id: &mut i32,
+        method: &str,
+        params: Value,
+    ) -> Result<i32, String> {
         *id += 1;
         let cmd = json!({
             "id": *id,
             "method": method,
             "params": params
         });
-        ws.send(tokio_tungstenite::tungstenite::Message::Text(cmd.to_string().into())).await
-            .map_err(|e| format!("WS send error: {}", e))?;
+        ws.send(tokio_tungstenite::tungstenite::Message::Text(
+            cmd.to_string().into(),
+        ))
+        .await
+        .map_err(|e| format!("WS send error: {}", e))?;
         Ok(*id)
     }
 
@@ -233,16 +286,22 @@ async fn search_goojara_via_cdp(query: &str) -> Result<Vec<SearchResult>, String
 
     send_command(&mut write, &mut msg_id, "Runtime.enable", json!({})).await?;
     send_command(&mut write, &mut msg_id, "Page.enable", json!({})).await?;
-    send_command(&mut write, &mut msg_id, "Page.navigate", json!({"url": "https://ww1.goojara.to/"})).await?;
+    send_command(
+        &mut write,
+        &mut msg_id,
+        "Page.navigate",
+        json!({"url": "https://ww1.goojara.to/"}),
+    )
+    .await?;
 
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
-
     // Trigger Goojara's real search input handler inside Chromium.
-    let query_js = serde_json::to_string(query)
-        .map_err(|e| format!("Failed to encode query: {}", e))?;
+    let query_js =
+        serde_json::to_string(query).map_err(|e| format!("Failed to encode query: {}", e))?;
 
-    let expression = format!(r##"
+    let expression = format!(
+        r##"
         (async () => {{
             const input = document.querySelector("#shd");
             const box = document.querySelector("#res");
@@ -284,7 +343,9 @@ async fn search_goojara_via_cdp(query: &str) -> Result<Vec<SearchResult>, String
 
             return [];
         }})()
-    "##, query = query_js);
+    "##,
+        query = query_js
+    );
 
     let fetch_eval = json!({
         "expression": expression,
@@ -292,12 +353,7 @@ async fn search_goojara_via_cdp(query: &str) -> Result<Vec<SearchResult>, String
         "awaitPromise": true
     });
 
-    let command_id = send_command(
-        &mut write,
-        &mut msg_id,
-        "Runtime.evaluate",
-        fetch_eval
-    ).await?;
+    let command_id = send_command(&mut write, &mut msg_id, "Runtime.evaluate", fetch_eval).await?;
 
     let timeout = tokio::time::sleep(tokio::time::Duration::from_secs(12));
     tokio::pin!(timeout);
@@ -398,6 +454,7 @@ impl SearchProvider for GoojaraProvider {
 
     fn search(&self, query: &str) -> Result<Vec<SearchResult>, ProviderError> {
         let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
-        rt.block_on(search_goojara_via_cdp(query)).map_err(|e| e.to_string())
+        rt.block_on(search_goojara_via_cdp(query))
+            .map_err(|e| e.to_string())
     }
 }

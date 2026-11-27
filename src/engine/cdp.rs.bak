@@ -66,11 +66,14 @@ pub async fn extract_wootly_via_cdp(movie_url: &str) -> Result<String, String> {
     }
 
     if ws_url.is_empty() {
-        let new_resp = client.get(&format!("http://127.0.0.1:9222/json/new?{}", urlencoding::encode(movie_url)))
+        let new_resp = client.put(&format!("http://127.0.0.1:9222/json/new?{}", urlencoding::encode(movie_url)))
             .send()
             .await
             .map_err(|e| format!("Failed to create new tab: {}", e))?;
-        let new_target: Value = new_resp.json().await.map_err(|e| format!("Failed to parse new target: {}", e))?;
+        let body_text = new_resp.text().await
+            .map_err(|e| format!("Failed to read new target response body: {}", e))?;
+        let new_target: Value = serde_json::from_str(&body_text)
+            .map_err(|e| format!("Failed to parse new target JSON ('{}'): {}", body_text, e))?;
         ws_url = new_target["webSocketDebuggerUrl"].as_str().ok_or("Missing ws url")?.to_string();
     }
 
