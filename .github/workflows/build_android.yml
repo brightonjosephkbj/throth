@@ -30,6 +30,16 @@ jobs:
         run: |
           cargo build --release --target aarch64-linux-android --lib
 
+      - name: Verify JNI export
+        run: |
+          LIB=target/aarch64-linux-android/release/libthroth.so
+          SYMBOL=Java_expo_modules_throthmedia_ThrothModule_nativeSearch
+          if ! readelf --dyn-syms --wide "$LIB" | grep -Fq "$SYMBOL"; then
+            echo "ERROR: Required JNI symbol is missing: $SYMBOL"
+            exit 1
+          fi
+          echo "Verified JNI export: $SYMBOL"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
