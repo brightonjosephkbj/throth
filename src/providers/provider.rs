@@ -1,11 +1,11 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum MediaType {
     Audio,
     Video,
     Unknown,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct SearchResult {
     pub title: String,
     pub creator: Option<String>,
