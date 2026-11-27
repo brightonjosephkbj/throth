@@ -42,8 +42,12 @@ jobs:
       - name: Build Linux x86_64
         run: cargo build --release --bin throth
 
-      - name: Build Android ARM64
-        run: cargo build --release --target aarch64-linux-android --bin throth
+      - name: Build Android ARM64 library
+        run: |
+          cargo build --release --target aarch64-linux-android --lib
+          file target/aarch64-linux-android/release/libthroth.so
+          readelf -h target/aarch64-linux-android/release/libthroth.so
+          readelf -d target/aarch64-linux-android/release/libthroth.so
 
       - name: Package Linux binary
         run: |
@@ -51,11 +55,13 @@ jobs:
           cp target/release/throth dist/linux/
           tar -czf throth-v1.0-linux-x86_64.tar.gz -C dist/linux throth
 
-      - name: Package Android ARM64 binary
+      - name: Package Android ARM64 binary and library
         run: |
           mkdir -p dist/android
-          cp target/aarch64-linux-android/release/throth dist/android/
-          tar -czf throth-v1.0-android-arm64.tar.gz -C dist/android throth
+          cp target/aarch64-linux-android/release/throth dist/android/ 2>/dev/null || true
+          cp target/aarch64-linux-android/release/libthroth.so dist/android/
+          tar -czf throth-v1.0-android-arm64.tar.gz -C dist/android throth 2>/dev/null || true
+          tar -czf throth-android-arm64-library.tar.gz -C dist/android libthroth.so
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
@@ -69,6 +75,12 @@ jobs:
           name: throth-android-arm64
           path: throth-v1.0-android-arm64.tar.gz
 
+      - name: Upload Android ARM64 Library artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: throth-android-arm64-library
+          path: throth-android-arm64-library.tar.gz
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -79,3 +91,4 @@ jobs:
           files: |
             throth-v1.0-linux-x86_64.tar.gz
             throth-v1.0-android-arm64.tar.gz
+            throth-android-arm64-library.tar.gz
