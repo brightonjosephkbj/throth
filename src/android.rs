@@ -1,8 +1,27 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
+
 use jni::objects::{JObject, JString};
 use jni::sys::jstring;
 use jni::JNIEnv;
 
+fn return_json(env: &mut JNIEnv, json: String) -> jstring {
+    env.new_string(json)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
+
+fn encode_result(result: Result<String, String>) -> String {
+    match result {
+        Ok(value) => value,
+        Err(error) => serde_json::json!({"error": error}).to_string(),
+    }
+}
+
+fn encode_panic(message: &str) -> String {
+    serde_json::json!({"error": message}).to_string()
+}
+
+// Existing YouTube search
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_expo_modules_throthmedia_ThrothModule_nativeSearch(
     mut env: JNIEnv,
@@ -15,31 +34,116 @@ pub extern "system" fn Java_expo_modules_throthmedia_ThrothModule_nativeSearch(
             .map_err(|e| e.to_string())?
             .into();
 
+        use crate::providers::youtube::YouTubeProvider;
+        use crate::providers::SearchProvider;
+
+        let yt = YouTubeProvider::new()
+            .map_err(|e| e.to_string())?;
+
+        let results = yt.search(&q)
+            .map_err(|e| e.to_string())?;
+
+        serde_json::to_string(&results)
+            .map_err(|e| e.to_string())
+    }));
+
+    let json = match result {
+        Ok(result) => encode_result(result),
+        Err(_) => encode_panic("native panic during YouTube search"),
+    };
+
+    return_json(&mut env, json)
+}
+
+// Goojara movie search with movie details
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_expo_modules_throthmedia_ThrothModule_nativeMovieSearch(
+    mut env: JNIEnv,
+    _this: JObject,
+    query: JString,
+) -> jstring {
+    let result = catch_unwind(AssertUnwindSafe(|| -> Result<String, String> {
+        let q: String = env
+            .get_string(&query)
+            .map_err(|e| e.to_string())?
+            .into();
+
+        use crate::providers::goojara::GoojaraProvider;
+        use crate::providers::movie::{
+            MovieDetails,
+            fetch_movie_details_via_cdp,
+        };
+        use crate::providers::SearchProvider;
+
+        let provider = GoojaraProvider::new()
+            .map_err(|e| e.to_string())?;
+
+        let results = provider.search(&q)
+            .map_err(|e| e.to_string())?;
+
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| e.to_string())?;
 
-        rt.block_on(async {
-            use crate::providers::youtube::YouTubeProvider;
-            use crate::providers::SearchProvider;
+        let details = rt.block_on(async {
+            let mut details_list = Vec::new();
 
-            let yt = YouTubeProvider::new()
-                .map_err(|e| e.to_string())?;
+            for item in results {
+                match fetch_movie_details_via_cdp(&item.url).await {
+                    Ok(details) => details_list.push(details),
+                    Err(_) => details_list.push(MovieDetails {
+                        movie_name: item.title,
+                        poster: item.artwork_url,
+                        duration: None,
+                        link: item.url,
+                        cast: Vec::new(),
+                    }),
+                }
+            }
 
-            let results = yt.search(&q)
-                .map_err(|e| e.to_string())?;
+            Ok::<_, String>(details_list)
+        })?;
 
-            serde_json::to_string(&results)
-                .map_err(|e| e.to_string())
-        })
+        serde_json::to_string(&details)
+            .map_err(|e| e.to_string())
     }));
 
-    let json_str = match result {
-        Ok(Ok(json)) => json,
-        Ok(Err(e)) => serde_json::json!({"error": e}).to_string(),
-        Err(_) => serde_json::json!({"error": "native panic during search"}).to_string(),
+    let json = match result {
+        Ok(result) => encode_result(result),
+        Err(_) => encode_panic("native panic during movie search"),
     };
 
-    env.new_string(json_str)
-        .map(|s| s.into_raw())
-        .unwrap_or(std::ptr::null_mut())
+    return_json(&mut env, json)
+}
+
+// Resolve a Goojara movie to its direct Wootly stream URL
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_expo_modules_throthmedia_ThrothModule_nativeMovieExtract(
+    mut env: JNIEnv,
+    _this: JObject,
+    movie_url: JString,
+) -> jstring {
+    let result = catch_unwind(AssertUnwindSafe(|| -> Result<String, String> {
+        let url: String = env
+            .get_string(&movie_url)
+            .map_err(|e| e.to_string())?
+            .into();
+
+        use crate::providers::goojara::GoojaraProvider;
+
+        let provider = GoojaraProvider::new()
+            .map_err(|e| e.to_string())?;
+
+        let stream_url = provider.extract_stream(&url)
+            .map_err(|e| e.to_string())?;
+
+        serde_json::to_string(&stream_url)
+            .map_err(|e| e.to_string())
+    }));
+
+    let json = match result {
+        Ok(result) => encode_result(result),
+        Err(_) => encode_panic("native panic during movie extraction"),
+    };
+
+    return_json(&mut env, json)
 }
