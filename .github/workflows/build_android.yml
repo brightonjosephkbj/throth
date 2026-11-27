@@ -1,0 +1,29 @@
+name: Build Android libthroth
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    name: Build ARM64 libthroth.so
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Build cdylib
+        run: |
+          cargo build --release --target aarch64-linux-android
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libthroth-aarch64
+          path: target/aarch64-linux-android/release/libthroth.so
