@@ -117,7 +117,13 @@ impl SearchProvider for SoundCloudProvider {
             let artwork_url = track
                 .get("artwork_url")
                 .and_then(Value::as_str)
-                .map(String::from);
+                .or_else(|| {
+                    track
+                        .get("user")
+                        .and_then(|user| user.get("avatar_url"))
+                        .and_then(Value::as_str)
+                })
+                .map(|u| u.replace("-large.", "-t500x500."));
 
             let duration_ms = track.get("duration").and_then(Value::as_u64);
 
