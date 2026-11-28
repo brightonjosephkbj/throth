@@ -280,3 +280,76 @@ pub extern "system" fn Java_expo_modules_throthmedia_ThrothModule_nativeMusicStr
     };
     return_json(&mut env, json)
 }
+
+// Download one SoundCloud track (clear AAC HLS only) into out_dir.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_expo_modules_throthmedia_ThrothModule_nativeMusicDownload(
+    mut env: JNIEnv,
+    _this: JObject,
+    track_url: JString,
+    title: JString,
+    out_dir: JString,
+) -> jstring {
+    let result = catch_unwind(AssertUnwindSafe(|| -> Result<String, String> {
+        let url: String = env.get_string(&track_url).map_err(|e| e.to_string())?.into();
+        let title: String = env.get_string(&title).map_err(|e| e.to_string())?.into();
+        let dir: String = env.get_string(&out_dir).map_err(|e| e.to_string())?.into();
+
+        use crate::engine::downloader::{download_hls_media, inspect_hls_manifest, save_audio_file};
+        use crate::engine::resolver::MediaResolver;
+        use crate::providers::soundcloud::SoundCloudProvider;
+        use crate::providers::{MediaType, SearchResult};
+
+        let provider = SoundCloudProvider::new().map_err(|e| e.to_string())?;
+        let item = SearchResult {
+            title: String::new(),
+            creator: None,
+            url,
+            provider: "soundcloud".to_string(),
+            artwork_url: None,
+            duration_ms: None,
+            media_type: MediaType::Audio,
+        };
+        let resolved = provider.resolve(&item)?;
+
+        let mut chosen = None;
+        for want in ["aac_160k", "aac_96k"] {
+            chosen = resolved.formats.iter().find(|f| {
+                f.format_id == want
+                    && f.direct_url.is_some()
+                    && !f.container.as_deref().unwrap_or("").to_lowercase().contains("encrypted")
+            });
+            if chosen.is_some() {
+                break;
+            }
+        }
+        let fmt = chosen.ok_or("This track is protected (DRM) and can't be downloaded")?;
+        let direct = fmt.direct_url.as_ref().ok_or("Format has no direct URL")?;
+
+        let manifest = inspect_hls_manifest(direct)?;
+        let protected = manifest
+            .encryption_method
+            .as_deref()
+            .map(|m| m.to_uppercase().contains("SAMPLE"))
+            .unwrap_or(false);
+        if protected {
+            return Err("This track is protected (DRM) and can't be downloaded".to_string());
+        }
+
+        let download = download_hls_media(&manifest)?;
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let name = if title.trim().is_empty() { "track".to_string() } else { title };
+        let saved = save_audio_file(&download.data, &dir, &name)?;
+
+        Ok(serde_json::json!({
+            "path": saved.to_string_lossy(),
+            "format_id": fmt.format_id,
+        })
+        .to_string())
+    }));
+    let json = match result {
+        Ok(result) => encode_result(result),
+        Err(_) => encode_panic("native panic during music download"),
+    };
+    return_json(&mut env, json)
+}
