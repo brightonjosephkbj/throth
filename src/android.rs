@@ -147,3 +147,64 @@ pub extern "system" fn Java_expo_modules_throthmedia_ThrothModule_nativeMovieExt
 
     return_json(&mut env, json)
 }
+
+// Goojara popular list. Fast: no per-movie CDP, details load on tap.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_expo_modules_throthmedia_ThrothModule_nativePopular(
+    mut env: JNIEnv,
+    _this: JObject,
+) -> jstring {
+    let result = catch_unwind(AssertUnwindSafe(|| -> Result<String, String> {
+        use crate::providers::goojara::GoojaraProvider;
+        use crate::providers::movie::MovieDetails;
+
+        let provider = GoojaraProvider::new().map_err(|e| e.to_string())?;
+        let results = provider.popular().map_err(|e| e.to_string())?;
+        let list: Vec<MovieDetails> = results
+            .into_iter()
+            .map(|item| MovieDetails {
+                movie_name: item.title,
+                poster: item.artwork_url,
+                duration: None,
+                link: item.url,
+                cast: Vec::new(),
+            })
+            .collect();
+        serde_json::to_string(&list).map_err(|e| e.to_string())
+    }));
+
+    let json = match result {
+        Ok(result) => encode_result(result),
+        Err(_) => encode_panic("native panic during popular"),
+    };
+    return_json(&mut env, json)
+}
+
+// Details (cast, duration, poster) for ONE movie link.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_expo_modules_throthmedia_ThrothModule_nativeMovieDetails(
+    mut env: JNIEnv,
+    _this: JObject,
+    movie_url: JString,
+) -> jstring {
+    let result = catch_unwind(AssertUnwindSafe(|| -> Result<String, String> {
+        let url: String = env
+            .get_string(&movie_url)
+            .map_err(|e| e.to_string())?
+            .into();
+
+        use crate::providers::movie::fetch_movie_details_via_cdp;
+
+        let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+        let details = rt
+            .block_on(fetch_movie_details_via_cdp(&url))
+            .map_err(|e| e.to_string())?;
+        serde_json::to_string(&details).map_err(|e| e.to_string())
+    }));
+
+    let json = match result {
+        Ok(result) => encode_result(result),
+        Err(_) => encode_panic("native panic during movie details"),
+    };
+    return_json(&mut env, json)
+}
