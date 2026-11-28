@@ -208,3 +208,75 @@ pub extern "system" fn Java_expo_modules_throthmedia_ThrothModule_nativeMovieDet
     };
     return_json(&mut env, json)
 }
+
+// SoundCloud search -> JSON array of SearchResult
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_expo_modules_throthmedia_ThrothModule_nativeMusicSearch(
+    mut env: JNIEnv,
+    _this: JObject,
+    query: JString,
+) -> jstring {
+    let result = catch_unwind(AssertUnwindSafe(|| -> Result<String, String> {
+        let q: String = env.get_string(&query).map_err(|e| e.to_string())?.into();
+        use crate::providers::soundcloud::SoundCloudProvider;
+        use crate::providers::SearchProvider;
+        let provider = SoundCloudProvider::new().map_err(|e| e.to_string())?;
+        let results = provider.search(&q).map_err(|e| e.to_string())?;
+        serde_json::to_string(&results).map_err(|e| e.to_string())
+    }));
+    let json = match result {
+        Ok(result) => encode_result(result),
+        Err(_) => encode_panic("native panic during music search"),
+    };
+    return_json(&mut env, json)
+}
+
+// Resolve one SoundCloud track page URL to playable stream formats
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_expo_modules_throthmedia_ThrothModule_nativeMusicStream(
+    mut env: JNIEnv,
+    _this: JObject,
+    track_url: JString,
+) -> jstring {
+    let result = catch_unwind(AssertUnwindSafe(|| -> Result<String, String> {
+        let url: String = env.get_string(&track_url).map_err(|e| e.to_string())?.into();
+        use crate::engine::resolver::MediaResolver;
+        use crate::providers::soundcloud::SoundCloudProvider;
+        use crate::providers::{MediaType, SearchResult};
+
+        let provider = SoundCloudProvider::new().map_err(|e| e.to_string())?;
+        let item = SearchResult {
+            title: String::new(),
+            creator: None,
+            url,
+            provider: "soundcloud".to_string(),
+            artwork_url: None,
+            duration_ms: None,
+            media_type: MediaType::Audio,
+        };
+        let resolved = provider.resolve(&item)?;
+        let formats: Vec<serde_json::Value> = resolved
+            .formats
+            .iter()
+            .map(|f| {
+                serde_json::json!({
+                    "format_id": f.format_id,
+                    "container": f.container,
+                    "mime_type": f.mime_type,
+                    "direct_url": f.direct_url,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "availability": format!("{:?}", resolved.availability),
+            "message": resolved.message,
+            "formats": formats,
+        })
+        .to_string())
+    }));
+    let json = match result {
+        Ok(result) => encode_result(result),
+        Err(_) => encode_panic("native panic during music stream"),
+    };
+    return_json(&mut env, json)
+}
